@@ -6,44 +6,89 @@
 #include <thread>
 #include <mutex>
 #include <vector>
+#include <string>
+#include <queue>
+#include <chrono>
 
 #include "ThreadUtil.h"
 
-#define THREAD_NUM 4
+#define THREAD_PRO_NUM 5
+#define THREAD_CON_NUM 3
+#define PAGE_NUM 5
 
-void Dosum(int& counter, std::mutex& m)
+void producer(std::queue<std::string>* Pages, std::mutex* m, int index)
 {
-    for (int i = 0; i < 10000; i++)
+    for (int i = 0; i < 5; i++)
     {
-        // lock 생성 시에 m.lock() 을 실행한다고 보면 된다.
-        std::lock_guard<std::mutex> lock(m);
-        counter += 1;
+        // 웹사이트 다운받는데 걸리는 시간이라 생각(스레드별로 다름)
+        std::this_thread::sleep_for(std::chrono::milliseconds(100 * index));
+        
+        std::string content = "웹사이트 : " + std::to_string(i) + " from thread(" + std::to_string(index) + ")\n";
 
-        // scope 를 빠져 나가면 lock 이 소멸되면서
-        // m 을 알아서 unlock 한다.
+        std::lock_guard<std::mutex> lock(*m);
+        Pages->push(content);
+    }
+}
+
+
+void consumer(std::queue<std::string>* Pages, std::mutex* m, int* num_processed)
+{
+    while (*num_processed < THREAD_PRO_NUM * PAGE_NUM)
+    {
+        m->lock();
+
+        // 다운로드 한 페이지가 없다면 다시 대기
+        if (Pages->empty())
+        {
+            m->unlock();
+
+            // 1초후 다시 확인
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+
+
+        // 다운로드 한 페이지가 있기 때문에 대기 목록에서 제거한다.
+        std::string content = Pages->front();
+        Pages->pop();
+
+        (*num_processed)++;
+        m->unlock();
+
+        std::cout << content;
+        std::this_thread::sleep_for(std::chrono::milliseconds(80));
     }
 }
 
 int main()
 {
-    std::cout << "Mutex 사용 예시입니다. \n"; 
+    std::cout << "생산자-소비자 패턴 예시입니다. \n";
 
-    int counter = 0;
+    std::mutex m;
+    std::queue<std::string> queue;
 
-    std::vector<std::thread> vThreads;
-    std::mutex m;   // mutex 객체
-
-    for (int i = 0; i < THREAD_NUM; ++i)
+    std::vector<std::thread> vThreadsPro;
+    for (int i = 0; i < THREAD_PRO_NUM; ++i)
     {
-        vThreads.push_back(std::thread(Dosum, std::ref(counter), std::ref(m)));
+        vThreadsPro.push_back(std::thread(producer, &queue, &m, i+1));
     }
 
-    for (int i = 0; i < THREAD_NUM; ++i)
+    int nIndex = 0;
+    std::vector<std::thread> vThreadsCon;
+    for (int i = 0; i < THREAD_CON_NUM; ++i)
     {
-        vThreads[i].join();
+        vThreadsCon.push_back(std::thread(consumer, &queue, &m, &nIndex));
     }
 
-    std::cout << "Counter 최종 값 : " << counter << std::endl;
+    for (int i = 0; i < THREAD_PRO_NUM; ++i)
+    {
+        vThreadsPro[i].join();
+    }
+
+    for (int i = 0; i < THREAD_CON_NUM; ++i)
+    {
+        vThreadsCon[i].join();
+    }
 
     return 0;
 }
