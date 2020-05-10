@@ -15,9 +15,12 @@ void Dosum(int& counter, std::mutex& m)
 {
     for (int i = 0; i < 10000; i++)
     {
-        m.lock();
+        // lock 생성 시에 m.lock() 을 실행한다고 보면 된다.
+        std::lock_guard<std::mutex> lock(m);
         counter += 1;
-        m.unlock();
+
+        // scope 를 빠져 나가면 lock 이 소멸되면서
+        // m 을 알아서 unlock 한다.
     }
 }
 
@@ -28,7 +31,8 @@ int main()
     int counter = 0;
 
     std::vector<std::thread> vThreads;
-    std::mutex m;
+    std::mutex m;   // mutex 객체
+
     for (int i = 0; i < THREAD_NUM; ++i)
     {
         vThreads.push_back(std::thread(Dosum, std::ref(counter), std::ref(m)));
