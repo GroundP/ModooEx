@@ -8,54 +8,35 @@
 
 #include "ThreadUtil.h"
 
-void Dosum(std::vector<int>::iterator start, std::vector<int>::iterator end, int& result)
+#define THREAD_NUM 4
+
+void Dosum(int& counter)
 {
-    int sum = 0;
-    for (auto itr = start; itr < end; ++itr)
+    for (int i = 0; i < 10000; i++)
     {
-        sum += *itr;
+        counter+=1;
     }
-
-    result = sum;
-
-    //std::thread::id Thread_id = std::this_thread::get_id();
-    printf("쓰레드 %d 부터 %d까지 계산한 결과 : %d \n", *start, *(end - 1), sum);
 }
 
 int main()
 {
-    std::cout << "Thread 프로그래밍 익숙해지기 연습중입니다. \n"; 
+    std::cout << "Mutex를 쓰지 않았을 때의 스레드 사용 문제 예시입니다. \n"; 
 
-    std::vector<int> vData(10000);
-    
+    int counter = 0;
 
-    for (int i = 0; i < 10000; ++i)
+    std::vector<std::thread> vThreads;
+
+    for (int i = 0; i < THREAD_NUM; ++i)
     {
-        vData[i] = i;
+        vThreads.push_back(std::thread(Dosum, std::ref(counter)));
     }
 
-    // 4개의 스레드에서 계산된 각각의 결과
-    std::vector<int> vPartial_sum(4);
-
-
-    std::vector<std::thread> vSumResults;
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < THREAD_NUM; ++i)
     {
-        vSumResults.push_back(std::thread(Dosum, vData.begin() + i * 2500, vData.begin() + (i + 1) * 2500, std::ref(vPartial_sum[i])));
+        vThreads[i].join();
     }
 
-    for (int i = 0; i < 4; i++) 
-    {
-        vSumResults[i].join();
-    }
-
-    int total = 0;
-    for (int i = 0; i < 4; i++) 
-    {
-        total += vPartial_sum[i];
-    }
-
-    std::cout << "전체 합 : " << total << std::endl;
+    std::cout << "Counter 최종 값 : " << counter << std::endl;
 
     return 0;
 }
