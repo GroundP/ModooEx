@@ -4,31 +4,34 @@
 #include "pch.h"
 #include <iostream>
 #include <thread>
+#include <mutex>
 #include <vector>
 
 #include "ThreadUtil.h"
 
 #define THREAD_NUM 4
 
-void Dosum(int& counter)
+void Dosum(int& counter, std::mutex& m)
 {
     for (int i = 0; i < 10000; i++)
     {
-        counter+=1;
+        m.lock();
+        counter += 1;
+        m.unlock();
     }
 }
 
 int main()
 {
-    std::cout << "Mutex를 쓰지 않았을 때의 스레드 사용 문제 예시입니다. \n"; 
+    std::cout << "Mutex 사용 예시입니다. \n"; 
 
     int counter = 0;
 
     std::vector<std::thread> vThreads;
-
+    std::mutex m;
     for (int i = 0; i < THREAD_NUM; ++i)
     {
-        vThreads.push_back(std::thread(Dosum, std::ref(counter)));
+        vThreads.push_back(std::thread(Dosum, std::ref(counter), std::ref(m)));
     }
 
     for (int i = 0; i < THREAD_NUM; ++i)
