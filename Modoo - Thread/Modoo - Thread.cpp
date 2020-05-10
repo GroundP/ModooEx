@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include <iostream>
+#include <condition_variable>
 #include <thread>
 #include <mutex>
 #include <vector>
@@ -16,7 +17,7 @@
 #define THREAD_CON_NUM 3
 #define PAGE_NUM 5
 
-void producer(std::queue<std::string>* Pages, std::mutex* m, int index)
+void producer(std::queue<std::string>* Pages, std::mutex* m, int index, std::condition_variable* Cond)
 {
     for (int i = 0; i < 5; i++)
     {
@@ -27,20 +28,29 @@ void producer(std::queue<std::string>* Pages, std::mutex* m, int index)
 
         std::lock_guard<std::mutex> lock(*m);
         Pages->push(content);
+
+        // consumer에게 준비되었음을 알림
+        Cond->notify_one();
     }
 }
 
 
-void consumer(std::queue<std::string>* Pages, std::mutex* m, int* num_processed)
+void consumer(std::queue<std::string>* Pages, std::mutex* m, int* num_processed, std::condition_variable* Cond)
 {
-    while (*num_processed < THREAD_PRO_NUM * PAGE_NUM)
+    const int nMax = THREAD_PRO_NUM * PAGE_NUM;
+    while (*num_processed < nMax)
     {
-        m->lock();
+        std::unique_lock<std::mutex> lock(*m);
+
+        Cond->wait(lock, [&Pages, &num_processed, &nMax] ()
+        {
+            return !Pages->empty() || *num_processed == nMax;
+        });
 
         // 다운로드 한 페이지가 없다면 다시 대기
         if (Pages->empty())
         {
-            m->unlock();
+            lock.unlock();
 
             // 1초후 다시 확인
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -53,7 +63,7 @@ void consumer(std::queue<std::string>* Pages, std::mutex* m, int* num_processed)
         Pages->pop();
 
         (*num_processed)++;
-        m->unlock();
+        lock.unlock();
 
         std::cout << content;
         std::this_thread::sleep_for(std::chrono::milliseconds(80));
@@ -66,24 +76,28 @@ int main()
 
     std::mutex m;
     std::queue<std::string> queue;
+    std::condition_variable Cond;
 
     std::vector<std::thread> vThreadsPro;
     for (int i = 0; i < THREAD_PRO_NUM; ++i)
     {
-        vThreadsPro.push_back(std::thread(producer, &queue, &m, i+1));
+        vThreadsPro.push_back(std::thread(producer, &queue, &m, i+1, &Cond));
     }
 
     int nIndex = 0;
     std::vector<std::thread> vThreadsCon;
     for (int i = 0; i < THREAD_CON_NUM; ++i)
     {
-        vThreadsCon.push_back(std::thread(consumer, &queue, &m, &nIndex));
+        vThreadsCon.push_back(std::thread(consumer, &queue, &m, &nIndex, &Cond));
     }
 
     for (int i = 0; i < THREAD_PRO_NUM; ++i)
     {
         vThreadsPro[i].join();
     }
+
+    // 자고 있는(기다리고 있는) 스레드를 모두 깨운다.
+    Cond.notify_all();
 
     for (int i = 0; i < THREAD_CON_NUM; ++i)
     {
